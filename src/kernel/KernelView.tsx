@@ -31,7 +31,7 @@ export default function KernelView() {
             (kernel.fs.bytes() / 1024).toFixed(1) + " KiB",
           ],
           [
-            "GUEST LINEAR MEMORY",
+            "LAST GUEST MEMORY",
             compiler.memoryBytes
               ? (compiler.memoryBytes / 1024).toFixed(0) + " KiB"
               : "not instantiated",
@@ -49,7 +49,12 @@ export default function KernelView() {
           <div className="pane-title">
             Runtime-managed tasks <span className="live-dot">live</span>
           </div>
-          <div className="table-scroll">
+          <div
+            className="table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="Scrollable process table"
+          >
             <table>
               <thead>
                 <tr>
@@ -200,7 +205,12 @@ export default function KernelView() {
             </select>
           </label>
         </div>
-        <div className="trace-scroll">
+        <div
+          className="trace-scroll"
+          tabIndex={0}
+          role="region"
+          aria-label="Scrollable execution trace"
+        >
           <table>
             <thead>
               <tr>

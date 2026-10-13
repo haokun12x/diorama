@@ -39,13 +39,13 @@ A VFS node is a directory or binary byte array. Paths normalize traversal agains
 
 Shell pipelines execute sequentially over bounded 1 MiB UTF-8 buffers. They are not concurrent Unix pipe file descriptors. `<`, `>`, `>>`, `2>`, and `2>>` route actual bytes/strings; /dev/null discards redirected output. Guest stdin is a finite buffer, and stdout/stderr return actual guest writes. Kernel descriptor methods maintain per-task fd, path, mode, and offset. During WASI calls the inspector receives the guest shim's actual descriptor list.
 
-IndexedDB stores the visitor workspace with atomic readwrite transactions. A 200 ms debounce avoids persisting each intermediate mutation. Restoration validates hierarchy and size before replacement. In-memory state remains usable if IndexedDB fails. Reset clears the stored snapshot and suppresses subsequent saves until reload.
+IndexedDB stores the visitor workspace as native byte-array snapshots with atomic readwrite transactions, avoiding expansion of binary files into large JavaScript number arrays. A 200 ms debounce avoids persisting each intermediate mutation. Restoration validates hierarchy and size before replacement. In-memory state remains usable if IndexedDB fails. Reset clears the stored snapshot and suppresses subsequent saves until reload.
 
 ## Compiler and guest boundaries
 
 The compiler receives source text, flags, and local header contents from the VFS. It loads genuine Clang, linker, and WASI sysroot artifacts only when requested. Its Emscripten filesystem is separate from the workspace; inputs and outputs cross explicitly. Output bytes become an ordinary VFS file.
 
-Each execution gets an isolated WASI filesystem snapshot. Read-only file flags and host checks restrict mutation to /home/visitor and /tmp. The host denies guest rename, links, symlinks, sockets, unsupported imports, shared memory, and memory without a maximum. Compiler-produced binaries declare a 64 MiB maximum. Only successful guest completion merges changed files back; cancellation discards the worker snapshot. There is no ambient DOM, cookie, credential, or network interface exposed to WASM imports. Worker JavaScript itself is trusted application code, not a sandbox for arbitrary uploaded JavaScript.
+Each execution gets an isolated WASI filesystem snapshot. Read-only file flags and host checks restrict mutation to /home/visitor and /tmp. The host denies guest rename, links, symlinks, sockets, unsupported imports, shared memory, and memory without a maximum. Compiler-produced binaries declare a 64 MiB maximum. Only successful guest completion merges changed files back through a staged, atomic VFS delta; cancellation discards the worker snapshot. There is no ambient DOM, cookie, credential, or network interface exposed to WASM imports. Worker JavaScript itself is trusted application code, not a sandbox for arbitrary uploaded JavaScript.
 
 ## Perception
 

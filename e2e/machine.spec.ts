@@ -121,6 +121,21 @@ test("genuine local Clang compilation, WASI I/O, diagnostics, exits, and interru
       ).stdout;
     }),
   ).toBe("pipe-through-wasi\n");
+  const nested = await page.evaluate(async () => {
+    const { kernel, shell } = window.diorama;
+    kernel.fs.mkdir("/home/visitor/nested", true);
+    kernel.fs.write("/home/visitor/nested/value.h", "#define ANSWER 42\n");
+    kernel.fs.write(
+      "/home/visitor/nested/main.c",
+      '#include <stdio.h>\n#include "value.h"\nint main(void){puts("relative header works");FILE*f=fopen("relative.txt","w");if(!f)return 1;fprintf(f,"%d",ANSWER);fclose(f);return 0;}',
+    );
+    const build = await shell.execute("cc nested/main.c -o nested/program");
+    const run = await shell.execute("./nested/program");
+    return { build, run, file: kernel.fs.text("/home/visitor/relative.txt") };
+  });
+  expect(nested.build.code).toBe(0);
+  expect(nested.run.code).toBe(0);
+  expect(nested.file).toBe("42");
   console.log("COMPILER_PROOF", JSON.stringify(proof));
 });
 test("actual YOLO26 CPU predictions, masks, filesystem results and permission failure", async ({
@@ -244,5 +259,82 @@ test("WebGPU backend runs genuine YOLO26 inference when an adapter is available"
     console.log("WEBGPU_PROOF", JSON.stringify({ info, ...proof }));
   } finally {
     await browser.close();
+  }
+});
+
+test("camera capture keeps one frame in flight and stops tracks with truthful persisted metadata", async () => {
+  const { chromium } = await import("@playwright/test");
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CHROMIUM_PATH,
+    args: [
+      "--no-sandbox",
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+    ],
+  });
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(
+      process.env.DIORAMA_URL || "http://127.0.0.1:4173/diorama/",
+    );
+    await page.evaluate(() => window.diorama.ready);
+    await page.evaluate(() => {
+      window.diorama.vision.preferredDevice = "cpu";
+    });
+    await page.getByRole("tab", { name: "Vision Lab", exact: true }).click();
+    await page.getByRole("button", { name: "Use camera" }).click();
+    await page.waitForFunction(() => window.diorama.vision.frames >= 2);
+    await page.getByRole("button", { name: "Stop camera" }).click();
+    await page.waitForFunction(() => !window.diorama.vision.busy);
+    const proof = await page.evaluate(() => {
+      const { vision, kernel } = window.diorama;
+      const video = document.querySelector("video")!;
+      return {
+        frames: vision.frames,
+        tracks: (video.srcObject as MediaStream)
+          .getTracks()
+          .map((t) => t.readyState),
+        active: kernel.taskInfo().filter((t) => t.kind === "vision" && !t.ended)
+          .length,
+        frameMagic: [...kernel.fs.read("/tmp/camera-frame.png").slice(0, 8)],
+        stored: JSON.parse(kernel.fs.text("/tmp/vision/detections.json")),
+        source: vision.imageUrl.slice(0, 22),
+      };
+    });
+    expect(proof.frames).toBeGreaterThanOrEqual(2);
+    expect(proof.tracks).toEqual(["ended"]);
+    expect(proof.active).toBe(0);
+    expect(proof.frameMagic).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(proof.stored.model).toBe("yolo26n");
+    expect(proof.stored.backend).toBe("cpu");
+    expect(proof.stored.width).toBe(640);
+    expect(proof.stored.height).toBe(480);
+    console.log("CAMERA_PROOF", JSON.stringify(proof));
+  } finally {
+    await browser.close();
+  }
+});
+
+test("all computer views expose accessible controls and readable contrast", async ({
+  page,
+}) => {
+  const { default: AxeBuilder } = await import("@axe-core/playwright");
+  await page.goto("./");
+  await page.evaluate(() => window.diorama.ready);
+  for (const tab of [
+    "Terminal",
+    "Compiler",
+    "Vision Lab",
+    "Projects",
+    "Kernel",
+  ]) {
+    await page.getByRole("tab", { name: tab, exact: true }).click();
+    await expect(page.locator(".view-loading:visible")).toHaveCount(0);
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+      .analyze();
+    expect(results.violations, tab + " accessibility failures").toEqual([]);
   }
 });

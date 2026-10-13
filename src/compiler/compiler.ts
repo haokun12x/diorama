@@ -47,8 +47,7 @@ export class Compiler {
               p.endsWith(".h") &&
               p.startsWith("/home/visitor/")
             )
-              extraFiles[p.slice("/home/visitor/".length)] =
-                this.kernel.fs.text(p);
+              extraFiles[p] = this.kernel.fs.text(p);
           const result = await this.worker<{
             diagnostics: string;
             binary?: Uint8Array;
@@ -60,7 +59,7 @@ export class Compiler {
             ),
             {
               source,
-              fileName: path.split("/").pop(),
+              fileName: path,
               flags,
               extraFiles,
               base: new URL(import.meta.env.BASE_URL, location.origin).href,

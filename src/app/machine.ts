@@ -37,6 +37,33 @@ export const ready = (async () => {
       e instanceof Error ? e.message : String(e),
     );
   }
+  if (!kernel.fs.exists("/home/visitor/sample-hello")) {
+    try {
+      const response = await fetch(
+        import.meta.env.BASE_URL + "examples/sample-hello.wasm",
+      );
+      if (!response.ok) throw Error("HTTP " + response.status);
+      kernel.fs.write(
+        "/home/visitor/sample-hello",
+        new Uint8Array(await response.arrayBuffer()),
+      );
+      kernel.trace(
+        1,
+        "kernel",
+        "sample.mount",
+        "prebuilt real WASI guest",
+        "ready",
+      );
+    } catch (e) {
+      kernel.trace(
+        1,
+        "kernel",
+        "sample.mount",
+        "prebuilt WASI guest",
+        String(e),
+      );
+    }
+  }
   const prior = kernel.fs.onChange;
   kernel.fs.onChange = () => {
     prior();

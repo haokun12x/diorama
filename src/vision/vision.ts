@@ -1,4 +1,4 @@
-import type { Results, ImageInput } from "@ultralytics/yolo";
+import type { Results } from "@ultralytics/yolo";
 import type { Kernel, Task } from "../kernel/kernel";
 export class Vision {
   status = "Models unloaded";
@@ -15,6 +15,10 @@ export class Vision {
   busy = false;
   private seq = 0;
   lastMaskUrl?: string;
+  private resultMetadata = new WeakMap<
+    Results,
+    { model: string; backend: string; pipelineMs: number; timestamp: string }
+  >();
   constructor(public kernel: Kernel) {}
   describe() {
     return `${this.status}\nModel: ${this.modelName || "none"}\nBackend: ${this.device}\nFrames processed: ${this.frames}\nInference: ${this.last ? this.last.speed.inference.toFixed(2) + " ms" : "not measured"}\nAll inference stays in this browser. Input tensor: fixed 640×640.\n`;
@@ -136,6 +140,12 @@ export class Vision {
             )
           )
             throw Error("Model returned invalid bounding boxes");
+          this.resultMetadata.set(r, {
+            model: this.modelName,
+            backend: this.device,
+            pipelineMs: result.duration,
+            timestamp: new Date().toISOString(),
+          });
           this.last = r;
           this.lastDuration = result.duration;
           this.frames++;
@@ -190,19 +200,20 @@ export class Vision {
     return this.infer(bytes, segment, parent, signal, classes);
   }
   json(r: Results) {
+    const metadata = this.resultMetadata.get(r);
     return {
-      model: this.modelName,
-      backend: this.device,
+      model: metadata?.model || this.modelName,
+      backend: metadata?.backend || this.device,
       width: r.width,
       height: r.height,
       boxes: r.boxes,
       speed: r.speed,
-      pipelineMs: this.lastDuration,
+      pipelineMs: metadata?.pipelineMs ?? this.lastDuration,
       masks: {
         bytes: r.masks.length,
         path: r.masks.length ? "/tmp/vision/mask.png" : null,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: metadata?.timestamp || new Date().toISOString(),
     };
   }
   async persist(r: Results, segment: boolean, pid = 1) {

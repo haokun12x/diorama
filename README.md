@@ -6,10 +6,13 @@ A miniature computing world, built from first principles. [Open the machine](htt
 
 DIORAMA is an executable engineering homepage. Its terminal queries and modifies a shared filesystem, its process inspector follows actual runtime tasks, its compiler runs genuine Clang/LLD as WebAssembly, and its vision lab evaluates YOLO26 locally. It is a TypeScript virtual kernel with a restricted WASI environment—not a Linux distribution.
 
+![DIORAMA live browser computer](docs/screenshots/desktop.jpg)
+
 ## Try it
 
 ```sh
 help
+./sample-hello  # real prebuilt WASI guest; no compiler download needed
 ls projects
 cat hello.c
 cc hello.c -O2 -o hello
@@ -21,7 +24,7 @@ cat /tmp/vision/detections.json
 vision segment /samples/street.jpg --model yolo26-seg
 ```
 
-C source stays in the browser. Guest programs execute in disposable workers with bounded memory, timeouts, cancellation, and controlled VFS writes. Images and camera frames also stay local; camera capture requires a button click and browser permission. No backend or API key is required. Compiler and model assets load only on use. User workspace files persist in IndexedDB.
+C source stays in the browser. Guest programs execute in disposable workers with bounded memory, timeouts, cancellation, and controlled VFS writes. Images and camera frames also stay local; camera capture requires a button click and browser permission. No backend or API key is required. Compiler and model assets load only on use. A 50 kB genuine prebuilt executable mounts at boot for immediate guest execution. User workspace files persist in IndexedDB.
 
 ## Run and verify
 

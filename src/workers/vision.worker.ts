@@ -35,7 +35,11 @@ self.onmessage = async ({ data }) => {
         if (!response.body) return response;
         const reader = response.body.getReader();
         let loaded = 0;
-        const total = Number(response.headers.get("content-length")) || 0;
+        const encoding = response.headers.get("content-encoding");
+        const total =
+          encoding && encoding !== "identity"
+            ? 0
+            : Number(response.headers.get("content-length")) || 0;
         const body = new ReadableStream({
           async pull(controller) {
             const r = await reader.read();

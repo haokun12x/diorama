@@ -168,7 +168,7 @@ export default function TerminalView() {
       term.writeln("Workspace mounted at /home/visitor.");
       term.writeln("Clang and YOLO26 load on request.\r\n");
       term.writeln(
-        "Start with \x1b[1mhelp\x1b[0m, or compile: \x1b[1mcc hello.c -o hello\x1b[0m\r\n",
+        "Run \x1b[1m./sample-hello\x1b[0m now, or compile: \x1b[1mcc hello.c -o hello\x1b[0m\r\n",
       );
       prompt();
     });

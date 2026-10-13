@@ -3,7 +3,10 @@ export type Entry =
   | { kind: "dir"; mtime: number };
 export type Snapshot = {
   version: 1;
-  entries: [string, { kind: "dir" | "file"; data?: number[]; mtime: number }][];
+  entries: [
+    string,
+    { kind: "dir" | "file"; data?: number[] | Uint8Array; mtime: number },
+  ][];
 };
 export type FsEvent = (op: string, args: string, result: string) => void;
 const encoder = new TextEncoder(),
@@ -170,7 +173,7 @@ export class FileSystem {
           {
             kind: n.kind,
             mtime: n.mtime,
-            ...(n.kind === "file" ? { data: Array.from(n.data) } : {}),
+            ...(n.kind === "file" ? { data: n.data.slice() } : {}),
           },
         ]),
     };

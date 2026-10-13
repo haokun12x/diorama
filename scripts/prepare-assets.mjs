@@ -14,11 +14,19 @@ await cp("node_modules/browsercc/dist", "public/toolchain", {
   recursive: true,
 });
 await rm("public/toolchain/stdc++.h.pch", { force: true });
-// Preserve genuine Clang/LLD output bytes as a VFS executable. This is the sole browsercc adapter patch.
+// Preserve genuine Clang/LLD output bytes and support full VFS source paths.
 let cc = await readFile("public/toolchain/index.js", "utf8");
 cc = cc.replace(
   "module: await WebAssembly.compile(output),",
   "module: await WebAssembly.compile(output),\n        binary: output,",
+);
+cc = cc.replace(
+  "clang.FS.writeFile(inputName, inputFile);",
+  'clang.FS.mkdirTree(inputName.split("/").slice(0,-1).join("/") || "/");\n    clang.FS.writeFile(inputName, inputFile);',
+);
+cc = cc.replace(
+  "clang.FS.writeFile(fileName, source);",
+  'clang.FS.mkdirTree(fileName.split("/").slice(0,-1).join("/") || "/");\n    clang.FS.writeFile(fileName, source);',
 );
 await writeFile("public/toolchain/index.js", cc);
 await cp("node_modules/browsercc/LICENSE", "public/toolchain/LICENSE");
@@ -116,3 +124,36 @@ for (const [dir, info] of Object.entries(lock.packages)) {
   }
 }
 await writeFile("public/licenses/npm-runtime-notices.txt", notices);
+
+// A small real executable makes the first guest interaction possible without downloading LLVM.
+await mkdir("public/examples", { recursive: true });
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const url =
+    input instanceof URL
+      ? input.href
+      : typeof input === "string"
+        ? input
+        : input.url;
+  if (url.startsWith("file:")) {
+    const data = await readFile(new URL(url));
+    return new Response(data, {
+      headers: { "content-length": String(data.length) },
+    });
+  }
+  return originalFetch(input, init);
+};
+try {
+  const { compile } = await import("../public/toolchain/index.js");
+  const source = await readFile("src/data/sample-hello.c", "utf8");
+  const result = await compile({
+    source,
+    fileName: "sample-hello.c",
+    flags: ["-O2", "-Wl,--max-memory=67108864", "-Wl,-z,stack-size=1048576"],
+  });
+  if (!result.binary) throw Error(result.compileOutput);
+  await writeFile("public/examples/sample-hello.wasm", result.binary);
+  console.log("Prebuilt WASI sample", result.binary.length, "bytes");
+} finally {
+  globalThis.fetch = originalFetch;
+}

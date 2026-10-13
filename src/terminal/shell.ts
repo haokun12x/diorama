@@ -182,7 +182,7 @@ export class Shell {
         return ok(
           "DIORAMA / executable field guide\n\n" +
             commands.join("  ") +
-            "\n\nCOMPUTE    cc hello.c -o hello  →  ./hello\nINSPECT    ps  ·  trace show  ·  cat /proc/runtime\nPERCEIVE   vision detect /samples/street.jpg --json\nSEGMENT    vision segment /samples/street.jpg --model yolo26-seg\nEXPLORE    find projects  ·  cat projects/wavefill/README.md\n\nPipes, <, >, >>, 2>, quotes and $VARIABLE are supported.\nUtilities are BusyBox-inspired TypeScript. Ctrl+C cancels workers.\n",
+            "\n\nTRY NOW    ./sample-hello (prebuilt WASI guest)\nCOMPUTE    cc hello.c -o hello  →  ./hello\nINSPECT    ps  ·  trace show  ·  cat /proc/runtime\nPERCEIVE   vision detect /samples/street.jpg --json\nSEGMENT    vision segment /samples/street.jpg --model yolo26-seg\nEXPLORE    find projects  ·  cat projects/wavefill/README.md\n\nPipes, <, >, >>, 2>, quotes and $VARIABLE are supported.\nUtilities are BusyBox-inspired TypeScript. Ctrl+C cancels workers.\n",
         );
       case "pwd":
         return ok(this.cwd + "\n");

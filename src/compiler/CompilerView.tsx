@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { cpp } from "@codemirror/lang-cpp";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { kernel, compiler, shell } from "../app/machine";
 import { samples } from "../data/samples";
 import { useMachine } from "../components/useMachine";
@@ -25,6 +27,20 @@ export default function CompilerView() {
       extensions: [
         basicSetup,
         cpp(),
+        EditorView.contentAttributes.of({
+          "aria-label": filename + " C source editor",
+        }),
+        syntaxHighlighting(
+          HighlightStyle.define([
+            {
+              tag: [tags.keyword, tags.meta, tags.processingInstruction],
+              color: "#99462a",
+            },
+            { tag: [tags.string, tags.character], color: "#246339" },
+            { tag: [tags.number, tags.typeName], color: "#594173" },
+            { tag: tags.comment, color: "#66705b" },
+          ]),
+        ),
         EditorView.theme({
           "&": { background: "#f8f7f0", fontSize: "13px" },
           ".cm-content": {
@@ -33,7 +49,7 @@ export default function CompilerView() {
           },
           ".cm-gutters": {
             background: "#efeee5",
-            color: "#999b8d",
+            color: "#667059",
             border: "none",
           },
           ".cm-scroller": { minHeight: "355px" },

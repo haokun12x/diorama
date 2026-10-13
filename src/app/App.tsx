@@ -349,7 +349,7 @@ export function App() {
                       }
                     }}
                   >
-                    <span className="tab-icon">
+                    <span className="tab-icon" aria-hidden="true">
                       {[">_", "⊞", "{ }", "◉", "▱"][i]}
                     </span>
                     {t}

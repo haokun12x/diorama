@@ -19,7 +19,11 @@ self.onmessage = async ({
         throw Error(`Compiler asset ${response.url}: HTTP ${response.status}`);
       if (!response.body) return response;
       const reader = response.body.getReader();
-      const total = Number(response.headers.get("content-length")) || 0;
+      const encoding = response.headers.get("content-encoding");
+      const total =
+        encoding && encoding !== "identity"
+          ? 0
+          : Number(response.headers.get("content-length")) || 0;
       let loaded = 0;
       const body = new ReadableStream({
         async pull(controller) {

@@ -1,6 +1,7 @@
 import type { Kernel } from "../kernel/kernel";
 import { projects, projectReadme } from "./projects";
 import { samples } from "./samples";
+import prebuiltSource from "./sample-hello.c?raw";
 export const commands = [
   "help",
   "pwd",
@@ -63,6 +64,7 @@ export function seed(k: Kernel) {
     "/home/visitor/README.md",
     "# Welcome to DIORAMA\n\nYour browser is the machine.\n\nTry:\n  ls\n  cat hello.c\n  cc hello.c -o hello\n  ./hello\n  trace show\n  cat /proc/runtime\n  ls projects\n  vision detect /samples/street.jpg --json\n\nYour workspace persists in IndexedDB on this browser. No server receives your C source.\nUse Ctrl+C to cancel a running task. Use reset to erase your saved workspace.\n",
   );
+  fs.write("/home/visitor/sample-hello.c", prebuiltSource);
   for (const [name, source] of Object.entries(samples))
     fs.write("/home/visitor/" + name, source);
   for (const p of projects) {

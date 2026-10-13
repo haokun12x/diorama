@@ -4,6 +4,8 @@ Measurements below are actual browser observations from 2026-10-13. They are sin
 
 | Experiment | Observed result |
 |---|---|
+| Cold-context homepage first contentful paint, localhost | 552 ms |
+| Workspace restored and terminal input created, localhost | 835.4 ms; no compiler, model, or ONNX runtime downloads |
 | Real hello.c Clang/LLD build | 651.0 ms; 184,672 linked WASM bytes (includes cwd initialization constructor) |
 | Real files.c build | 531.2 ms; 261,261 linked WASM bytes |
 | Guest linear memory during acceptance | 1,114,112 bytes observed |
@@ -33,6 +35,6 @@ npm run test:e2e
 DIORAMA_URL=https://haokun12x.github.io/diorama/ npm run test:e2e
 ```
 
-The real model and compiler tests use no fabricated prediction/compilation fixtures. The camera-denial test deliberately replaces getUserMedia with a permission error; the asset-failure test deliberately responds HTTP 503. Those validate error handling, not inference. The WebGPU test enables Chromium's software-capable test adapter and prints its architecture/fallback status. CI records detailed test output and uploads test-results artifacts.
+The real model and compiler tests use no fabricated prediction/compilation fixtures. The successful camera test uses Chromium's explicitly synthetic test-video device but evaluates the real model, verifies one-frame processing, stops the actual MediaStream tracks, and checks persisted prediction metadata. Accessibility scanning reports zero detected WCAG A/AA issues across the five desktop computer views; this is an automated check, not a certification. The camera-denial test deliberately replaces getUserMedia with a permission error; the asset-failure test deliberately responds HTTP 503. Those validate error handling, not inference. The WebGPU test enables Chromium's software-capable test adapter and prints its architecture/fallback status. CI records detailed test output and uploads test-results artifacts.
 
 For a meaningful hardware performance study, record browser/OS/adapter, model hash, tensor size, threshold, first-use downloads, warmup policy, at least 30 inference samples, and p50/p95 independently for CPU and WebGPU. Do not turn these single-run observations into an advertised FPS guarantee.

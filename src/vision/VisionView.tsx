@@ -44,7 +44,15 @@ function draw(
       th = width / 35 + 8;
     ctx.fillStyle = b.color || "#c2d49c";
     ctx.fillRect(x, Math.max(0, y - th), tw, th);
-    ctx.fillStyle = "#172018";
+    const rgb = (b.color || "#c2d49c")
+      .slice(1)
+      .match(/../g)!
+      .map((x) => parseInt(x, 16) / 255)
+      .map((x) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    ctx.fillStyle =
+      rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 < 0.179
+        ? "#ffffff"
+        : "#000000";
     ctx.fillText(text, x + 6, Math.max(th - 5, y - 5));
   }
 }
@@ -55,6 +63,7 @@ export default function VisionView() {
     stream = useRef<MediaStream | null>(null),
     alive = useRef(true),
     cameraOn = useRef(false),
+    completedFrame = useRef<HTMLCanvasElement | null>(null),
     abort = useRef<AbortController | null>(null);
   const [sample, setSample] = useState("/samples/street.jpg"),
     [segment, setSegment] = useState(false),
@@ -140,10 +149,32 @@ export default function VisionView() {
     cameraOn.current = false;
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
+    abort.current?.abort();
+    if (completedFrame.current) {
+      if (vision.imageUrl.startsWith("blob:"))
+        URL.revokeObjectURL(vision.imageUrl);
+      vision.imageUrl = completedFrame.current.toDataURL("image/png");
+      try {
+        const bytes = Uint8Array.from(
+          atob(vision.imageUrl.split(",")[1]),
+          (c) => c.charCodeAt(0),
+        );
+        kernel.fs.write("/tmp/camera-frame.png", bytes);
+        setSample("/tmp/camera-frame.png");
+      } catch (e) {
+        setError(String(e));
+      }
+    }
+    if (vision.last)
+      void vision
+        .persist(vision.last, segment)
+        .catch((e) => setError(String(e)));
     setCamera(false);
+    kernel.notify();
   };
   const startCamera = async () => {
     setError("");
+    completedFrame.current = null;
     try {
       if (!navigator.mediaDevices?.getUserMedia)
         throw Error("Camera requires HTTPS and browser camera support");
@@ -176,6 +207,11 @@ export default function VisionView() {
           selected === undefined ? undefined : [selected],
           false,
         );
+        const raw = document.createElement("canvas");
+        raw.width = buffer.width;
+        raw.height = buffer.height;
+        raw.getContext("2d")!.drawImage(buffer, 0, 0);
+        completedFrame.current = raw;
         if (canvas.current && cameraOn.current)
           draw(canvas.current, buffer, buffer.width, buffer.height, r, mask);
         await new Promise<void>((resolve) =>
@@ -184,13 +220,21 @@ export default function VisionView() {
       }
       if (vision.last) await vision.persist(vision.last, segment);
     } catch (e) {
-      setError(
-        e instanceof DOMException && e.name === "NotAllowedError"
-          ? "Camera access was denied. Use a sample image or upload instead."
-          : e instanceof Error
-            ? e.message
-            : String(e),
-      );
+      if (
+        alive.current &&
+        !(
+          e instanceof Error &&
+          e.message.includes("interrupted") &&
+          !cameraOn.current
+        )
+      )
+        setError(
+          e instanceof DOMException && e.name === "NotAllowedError"
+            ? "Camera access was denied. Use a sample image or upload instead."
+            : e instanceof Error
+              ? e.message
+              : String(e),
+        );
       stop();
     } finally {
       abort.current = null;
@@ -221,7 +265,10 @@ export default function VisionView() {
         </div>
         <div className="vision-metrics">
           {[
-            ["BACKEND", vision.device],
+            [
+              "BACKEND",
+              vision.last ? vision.json(vision.last).backend : vision.device,
+            ],
             [
               "INFERENCE",
               vision.last
@@ -359,7 +406,8 @@ export default function VisionView() {
         <p className="fine">
           Images and camera frames stay in this browser. Models and runtimes
           download from this site on first use; no inference server or
-          telemetry.
+          telemetry. Stopping the camera saves the last frame and results in
+          your local workspace.
         </p>
         <p
           className={"vision-status " + (error ? "error" : "")}

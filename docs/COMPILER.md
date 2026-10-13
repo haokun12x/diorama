@@ -17,7 +17,7 @@ echo "input from the shell" | ./input
 
 Samples cover hello, Fibonacci, guest file I/O, malloc/checksum, qsort, numerical integration, and stdin. CodeMirror edits the same C source file the shell compiles. Compile saves it, passes allowed options to Clang, and writes a .wasm output. Run executes that output; after edits, compile again before running.
 
-Supported flags: -O0/-O1/-O2/-O3/-Os/-Oz, -g, -Wall, -Wextra, -Werror, -std=c89/c99/c11/c17/c2x/c23, and -DNAME=value. One translation unit is supported; local .h files in /home/visitor are copied into the compiler's isolated filesystem. Multi-file linking and C++ UI are not implemented.
+Supported flags: -O0/-O1/-O2/-O3/-Os/-Oz, -g, -Wall, -Wextra, -Werror, -std=c89/c99/c11/c17/c2x/c23, and -DNAME=value. One translation unit is supported; local .h files in /home/visitor are copied at their absolute VFS paths into the compiler's isolated filesystem, preserving source-relative includes in nested folders. Multi-file linking and C++ UI are not implemented.
 
 The actual module inspector uses `WebAssembly.Module.imports` and `.exports`. Clang diagnostics and nonzero guest exits remain visible. Compile has a 180 s timeout, guests 10 s, output 1 MiB, linear memory 64 MiB, file size 8 MiB, and workspace 32 MiB. Limits apply to guest linear memory; browser-managed compiler and inference allocations are larger and not described as guest usage.
 
@@ -26,3 +26,5 @@ WASI preview1 imports come from the pinned browser_wasi_shim. Common exercised i
 All guests require exactly one defined, non-shared memory with a maximum ≤1024 64 KiB pages. The binary validator checks this before instantiation. Clang links with a 64 MiB maximum and 1 MiB stack. A compiler worker is disposed after each compilation to release large LLVM heaps. Browser HTTP cache can reuse assets. User binaries live in the VFS and IndexedDB, not in an application backend.
 
 DIORAMA injects a private constructor header that calls wasi-libc `chdir(getenv("PWD"))` before main. The cwd and root are explicit preopens named by their absolute paths. This keeps relative guest file operations consistent with the invoking shell. The header is part of the worker adapter and is compiled by Clang along with the user translation unit; it is not an output simulator.
+
+The initial workspace also mounts sample-hello, a ~50 kB prebuilt WASI executable compiled by the same Clang WebAssembly toolchain during asset preparation. Its exact source is sample-hello.c. Running it immediately exercises real guest execution; it does not replace visitor-driven browser compilation.
