@@ -1,0 +1,15 @@
+node_modules/
+dist/
+public/toolchain/
+public/models/
+public/ort/
+playwright-report/
+test-results/
+.env*
+!.env.example
+__pycache__/
+*.pyc
+*.pt
+*.pth
+*.safetensors
+public/yolo/

@@ -1,0 +1,62 @@
+[
+  {
+    "file": "yolo26n.onnx",
+    "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.onnx",
+    "bytes": 9941957,
+    "sha256": "2e947b787d9e787b93a16772a5f55b1d4d8c4d86f53146149c5d6a642442d6f7"
+  },
+  {
+    "file": "yolo26n-seg.onnx",
+    "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-seg.onnx",
+    "bytes": 11218582,
+    "sha256": "711e0ef837c677ae4006f65fe503a62a6b0529979f4828ed50b674a7482b7d2e"
+  },
+  {
+    "file": "ort.wasm.min.js",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort.wasm.min.js",
+    "bytes": 50161,
+    "sha256": "d1a64827a4ea9796a029e90ce4cdeedb567adb5f4386dc453b8c72ea87b79eb0"
+  },
+  {
+    "file": "ort.webgpu.min.js",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort.webgpu.min.js",
+    "bytes": 67259,
+    "sha256": "dc1980b9a8ea2e33e4373aca744604e1e7dc75967f2d491da60b1be3534b7326"
+  },
+  {
+    "file": "ort-wasm-simd-threaded.wasm",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort-wasm-simd-threaded.wasm",
+    "bytes": 13479978,
+    "sha256": "d1ab1b94b16a65b29d710d0b587b29e7bed336827577623913479b8afe8113e6"
+  },
+  {
+    "file": "ort-wasm-simd-threaded.mjs",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort-wasm-simd-threaded.mjs",
+    "bytes": 24180,
+    "sha256": "0a1e718d99c41b22c21f2520ff4f9e883a6b5533856e398d21816ee8eb8185d3"
+  },
+  {
+    "file": "ort-wasm-simd-threaded.jsep.wasm",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort-wasm-simd-threaded.jsep.wasm",
+    "bytes": 26827543,
+    "sha256": "78feeeb3d08f6bcee94d938ed322f69073bb8076b5f9d34697a574ffba8deb48"
+  },
+  {
+    "file": "ort-wasm-simd-threaded.jsep.mjs",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort-wasm-simd-threaded.jsep.mjs",
+    "bytes": 46614,
+    "sha256": "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6"
+  },
+  {
+    "file": "ort-wasm-simd-threaded.asyncify.wasm",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort-wasm-simd-threaded.asyncify.wasm",
+    "bytes": 24254953,
+    "sha256": "7e83cd6cee77e478bc96a7e91b198144fb5e4126287daf1f9b54bb195ebcd55a"
+  },
+  {
+    "file": "ort-wasm-simd-threaded.asyncify.mjs",
+    "source": "https://cdn.pyke.io/0/pyke:ort-rs/web@1.27.0/ort-wasm-simd-threaded.asyncify.mjs",
+    "bytes": 47507,
+    "sha256": "7236653b8565da4046e459cd0e274123419a1d9f1f8f18fd36c28058346ca655"
+  }
+]
