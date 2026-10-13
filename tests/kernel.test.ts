@@ -2,12 +2,91 @@ import { describe, it, expect, beforeEach } from "vitest";
 import "fake-indexeddb/auto";
 import { FileSystem, resolvePath, SnapshotStore } from "../src/fs/filesystem";
 import { Kernel } from "../src/kernel/kernel";
+import { kernelModule } from "../src/kernel/native";
 import { Shell } from "../src/terminal/shell";
 import { parse } from "../src/terminal/parser";
 import { validateMemory } from "../src/compiler/wasm";
 import { seed } from "../src/data/seed";
 import type { Compiler } from "../src/compiler/compiler";
 import type { Vision } from "../src/vision/vision";
+describe("authoritative Rust/WebAssembly system", () => {
+  it("owns state across the actual C ABI and keeps JavaScript copies separate", () => {
+    const k = new Kernel();
+    expect(k.core.instance).toBeInstanceOf(WebAssembly.Instance);
+    expect(
+      WebAssembly.Module.imports(kernelModule)
+        .map((i) => i.module + "." + i.name)
+        .sort(),
+    ).toEqual(["diorama.clock_ms", "diorama.random_fill", "diorama.unix_ms"]);
+    k.core.call("fs.mkdir", { path: "/home/visitor", recursive: true });
+    k.core.call(
+      "fs.write",
+      { path: "/home/visitor/native" },
+      new TextEncoder().encode("owned by WASM"),
+    );
+    const mirror = k.fs.entries.get("/home/visitor/native")!;
+    if (mirror.kind === "file") mirror.data.fill(0);
+    expect(k.fs.text("native")).toBe("owned by WASM");
+    k.fs.write("relative", "adapter path normalization");
+    expect(
+      k.core.call("fs.exists", { path: "/home/visitor/relative" }).value,
+    ).toBe(true);
+    const task = k.spawn("native record");
+    task.name = "changed JavaScript copy";
+    expect(k.taskInfo().find((t) => t.pid === task.pid)?.name).toBe(
+      "native record",
+    );
+    expect(k.core.info()).toMatchObject({
+      language: "Rust",
+      execution: "WebAssembly",
+      abi: 1,
+    });
+    expect(k.core.info().linearMemoryBytes).toBe(
+      k.core.exports.memory.buffer.byteLength,
+    );
+  });
+  it("enforces guest directory capabilities and denied services in WASM", () => {
+    const k = new Kernel();
+    seed(k);
+    k.core.call("guest.init", {
+      pid: 42,
+      cwd: "/home/visitor",
+      argv: ["probe"],
+      env: [],
+    });
+    const denied = k.core.call<{ errno: number }>("wasi.path_open", {
+      dirfd: 3,
+      path: "etc/motd",
+      oflags: 8,
+      rights: "64",
+      fdflags: 0,
+    });
+    expect(denied.value.errno).toBe(63);
+    expect(k.fs.text("/etc/motd")).toContain("DIORAMA");
+    expect(
+      k.core.call<{ errno: number }>("wasi.path_open", {
+        dirfd: 4,
+        path: "../../etc/motd",
+        oflags: 0,
+        rights: "2",
+        fdflags: 0,
+      }).value.errno,
+    ).toBe(76);
+    expect(k.core.call<{ errno: number }>("wasi.sock_send").value.errno).toBe(
+      58,
+    );
+    const random = k.core.call<{ errno: number }>("wasi.random_get", {
+      len: 32,
+    });
+    expect(random.value.errno).toBe(0);
+    expect(random.data.some((n) => n !== 0)).toBe(true);
+    expect(
+      k.events.some(
+        (e) => e.layer === "WASI" && e.op === "path_open" && e.result === "63",
+      ),
+    ).toBe(true);
+  });
+});
 describe("virtual filesystem", () => {
   let fs: FileSystem;
   beforeEach(() => {

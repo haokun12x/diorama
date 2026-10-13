@@ -1,8 +1,62 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+test("Rust/WASM kernel and native WASI services execute actual C system operations", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.waitForFunction(() => window.diorama?.ready);
+  await page.evaluate(() => window.diorama.ready);
+  const proof = await page.evaluate(
+    async (source) => {
+      const { kernel, shell } = window.diorama;
+      kernel.fs.write("/home/visitor/native-probe.c", source);
+      const build = await shell.execute("cc native-probe.c -o native-probe");
+      await shell.execute("export PROBE=native");
+      const run = await shell.execute("./native-probe proof");
+      return {
+        build,
+        run,
+        file: kernel.fs.text("/home/visitor/system-probe/data"),
+        info: kernel.core.info(),
+        proc: JSON.parse(kernel.fs.text("/proc/runtime")),
+        calls: kernel.events
+          .filter((e) => e.layer === "WASI")
+          .map((e) => [e.op, e.result]),
+      };
+    },
+    await readFile(
+      new URL("../src/data/system-probe.c", import.meta.url),
+      "utf8",
+    ),
+  );
+  expect(proof.build.code).toBe(0);
+  expect(proof.run.code).toBe(0);
+  expect(proof.file).toBe("aZc");
+  expect(proof.info).toMatchObject({
+    language: "Rust",
+    execution: "WebAssembly",
+    abi: 1,
+  });
+  expect(proof.proc.kernelExecution).toBe("WebAssembly");
+  for (const op of [
+    "fd_pwrite",
+    "fd_seek",
+    "fd_read",
+    "fd_filestat_set_size",
+    "fd_readdir",
+    "random_get",
+    "clock_time_get",
+  ])
+    expect(proof.calls).toContainEqual([op, "0"]);
+  expect(proof.calls).toContainEqual(["path_open", "63"]);
+  expect(proof.calls).toContainEqual(["path_rename", "58"]);
+  console.log("RUST_WASM_PROOF", JSON.stringify(proof));
+});
 test("production navigation, terminal, persistence, and narrow layout", async ({
   page,
 }) => {
   await page.goto("./");
+  await page.waitForFunction(() => window.diorama?.ready);
   await page.evaluate(() => window.diorama.ready);
   await expect(page.getByRole("heading", { level: 1 })).toContainText(
     "An Entire Computer",
@@ -14,6 +68,7 @@ test("production navigation, terminal, persistence, and narrow layout", async ({
   expect(r.code).toBe(0);
   await page.waitForTimeout(350);
   await page.reload();
+  await page.waitForFunction(() => window.diorama?.ready);
   await page.evaluate(() => window.diorama.ready);
   expect(
     await page.evaluate(() =>
@@ -50,6 +105,7 @@ test("genuine local Clang compilation, WASI I/O, diagnostics, exits, and interru
   page,
 }) => {
   await page.goto("./");
+  await page.waitForFunction(() => window.diorama?.ready);
   await page.evaluate(() => window.diorama.ready);
   const proof = await page.evaluate(async () => {
     const { shell, kernel, compiler } = window.diorama;
@@ -142,6 +198,7 @@ test("actual YOLO26 CPU predictions, masks, filesystem results and permission fa
   page,
 }) => {
   await page.goto("./");
+  await page.waitForFunction(() => window.diorama?.ready);
   await page.evaluate(() => window.diorama.ready);
   await page.evaluate(() => {
     window.diorama.vision.preferredDevice = "cpu";
@@ -198,6 +255,7 @@ test("model download failure gives a truthful retryable state", async ({
     r.fulfill({ status: 503, body: "Unavailable" }),
   );
   await page.goto("./");
+  await page.waitForFunction(() => window.diorama?.ready);
   await page.evaluate(() => window.diorama.ready);
   const failure = await page.evaluate(async () => {
     try {
@@ -223,6 +281,7 @@ test("WebGPU backend runs genuine YOLO26 inference when an adapter is available"
     await page.goto(
       process.env.DIORAMA_URL || "http://127.0.0.1:4173/diorama/",
     );
+    await page.waitForFunction(() => window.diorama?.ready);
     await page.evaluate(() => window.diorama.ready);
     const info = await page.evaluate(async () => {
       const gpu = (
@@ -279,6 +338,7 @@ test("camera capture keeps one frame in flight and stops tracks with truthful pe
     await page.goto(
       process.env.DIORAMA_URL || "http://127.0.0.1:4173/diorama/",
     );
+    await page.waitForFunction(() => window.diorama?.ready);
     await page.evaluate(() => window.diorama.ready);
     await page.evaluate(() => {
       window.diorama.vision.preferredDevice = "cpu";
@@ -322,6 +382,7 @@ test("all computer views expose accessible controls and readable contrast", asyn
 }) => {
   const { default: AxeBuilder } = await import("@axe-core/playwright");
   await page.goto("./");
+  await page.waitForFunction(() => window.diorama?.ready);
   await page.evaluate(() => window.diorama.ready);
   for (const tab of [
     "Terminal",

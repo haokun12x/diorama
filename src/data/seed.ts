@@ -58,7 +58,7 @@ export function seed(k: Kernel) {
     fs.write("/dev/" + name, "");
   fs.write(
     "/etc/motd",
-    "DIORAMA / a miniature computing world\nVirtual kernel. Real Clang. Real WebAssembly. Local neural perception.\n",
+    "DIORAMA / a miniature computing world\nRust/WASM kernel. Real Clang. Real WebAssembly. Local neural perception.\n",
   );
   fs.write(
     "/home/visitor/README.md",
@@ -73,11 +73,11 @@ export function seed(k: Kernel) {
   }
   fs.write(
     "/usr/KERNEL.md",
-    "# DIORAMA kernel\n\nA TypeScript virtual runtime, not Linux. Cooperative task dispatch runs on the browser event loop. Synchronous WASM guests run in dedicated workers with restricted WASI imports and 64 MiB linear-memory maxima. Workers are terminated on cancellation or timeout. No fork, threads, signals, sockets, symlinks, or native devices.\n\nInspect /proc/tasks, /proc/mounts, /proc/runtime.\n",
+    "# DIORAMA kernel\n\nA Rust/WebAssembly virtual kernel. Files, tasks, descriptors, traces, snapshots, and WASI preview1 services execute in WASM. JavaScript supplies the shell, UI, clocks, cryptographic entropy, storage transport, and Worker control. Cooperative task dispatch runs on the browser event loop. Synchronous WASM guests run in dedicated workers with restricted WASI imports and 64 MiB linear-memory maxima. Workers are terminated on cancellation or timeout. No fork, threads, signals, sockets, symlinks, or native devices.\n\nInspect /proc/tasks, /proc/mounts, /proc/runtime.\n",
   );
   fs.write(
     "/samples/README.md",
-    "street.jpg and desk.jpg are same-origin bundled images. On first inference the image bytes are added to this VFS. YOLO26 weights load only on request.\n",
+    "street.jpg and people.jpg are same-origin bundled images. On first inference the image bytes are added to this VFS. YOLO26 weights load only on request.\n",
   );
   k.proc();
   k.trace(

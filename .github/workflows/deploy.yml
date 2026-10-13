@@ -18,7 +18,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Install pinned Rust and WASM target
+        run: rustup toolchain install 1.90.0 --profile minimal --target wasm32-unknown-unknown
       - run: npm ci
+      - name: Build the Rust WebAssembly kernel and WASI services
+        run: npm run kernel
+      - run: npm run test:rust
       - name: Prepare compiler and pinned inference assets
         run: npm run assets
       - run: npm run typecheck

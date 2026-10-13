@@ -1,0 +1,20 @@
+[package]
+name = "diorama-kernel"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "DIORAMA virtual kernel: real filesystem, tasks, descriptors, tracing, and snapshots in WebAssembly"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

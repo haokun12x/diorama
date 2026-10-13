@@ -1,4 +1,6 @@
+import systemProbe from "./system-probe.c?raw";
 export const samples: Record<string, string> = {
+  "system-probe.c": systemProbe,
   "hello.c": `#include <stdio.h>\n\nint main(void) {\n    puts("Hello from inside the browser.");\n    puts("A real C program. A real WASM executable.");\n    return 0;\n}\n`,
   "fibonacci.c": `#include <stdio.h>\n#include <stdint.h>\n\nint main(void) {\n    uint64_t a = 0, b = 1;\n    for (int i = 0; i < 20; i++) {\n        printf("%2d  %llu\\n", i, (unsigned long long)a);\n        uint64_t next = a + b; a = b; b = next;\n    }\n    return 0;\n}\n`,
   "files.c": `#include <stdio.h>\n\nint main(void) {\n    FILE *f = fopen("/tmp/guest-note.txt", "w");\n    if (!f) { perror("fopen"); return 1; }\n    fputs("Written by a WASI guest, read by the shell.\\n", f);\n    fclose(f);\n    f = fopen("/tmp/guest-note.txt", "r");\n    char line[128];\n    if (f && fgets(line, sizeof line, f)) printf("Guest read: %s", line);\n    if (f) fclose(f);\n    puts("Try: cat /tmp/guest-note.txt");\n    return 0;\n}\n`,

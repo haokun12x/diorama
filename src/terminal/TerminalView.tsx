@@ -164,7 +164,7 @@ export default function TerminalView() {
       term.writeln(
         "\x1b[38;2;210;148;115mDIORAMA  /  browser computing environment\x1b[0m",
       );
-      term.writeln("Virtual kernel initialized. WASI workers available.");
+      term.writeln("Rust/WASM kernel initialized. WASI services ready.");
       term.writeln("Workspace mounted at /home/visitor.");
       term.writeln("Clang and YOLO26 load on request.\r\n");
       term.writeln(

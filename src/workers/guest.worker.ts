@@ -1,245 +1,328 @@
 /// <reference lib="webworker" />
-import {
-  WASI,
-  File,
-  Directory,
-  PreopenDirectory,
-  OpenDirectory,
-  OpenFile,
-  ConsoleStdout,
-} from "@bjorn3/browser_wasi_shim";
-import type { Inode } from "@bjorn3/browser_wasi_shim";
+import { NativeKernel } from "../kernel/runtime";
 import type { Snapshot } from "../fs/filesystem";
 import { validateMemory } from "../compiler/wasm";
+
 type GuestInput = {
   binary: Uint8Array;
+  kernelModule: WebAssembly.Module;
+  pid: number;
   args: string[];
   env: string[];
   stdin: string;
   snapshot: Snapshot;
   cwd: string;
 };
+type SnapshotNode = {
+  path: string;
+  kind: "file" | "dir";
+  mtime: number;
+  offset: number;
+  len: number;
+};
+class ProcessExit extends Error {
+  constructor(public code: number) {
+    super("WASI process exit");
+  }
+}
+const encode = new TextEncoder(),
+  decode = new TextDecoder();
+
+// Only marshals WASI's guest pointers. Rust/WASM owns all service semantics and state.
 self.onmessage = async ({ data }: { data: GuestInput }) => {
   try {
     validateMemory(data.binary);
-    const root = new Directory(new Map());
+    const core = new NativeKernel(data.kernelModule);
+    const nodes: SnapshotNode[] = [];
     const original = new Map<string, Uint8Array>();
-    for (const [path, entry] of data.snapshot.entries.sort(
-      (a, b) => a[0].length - b[0].length,
-    )) {
-      if (path === "/") continue;
-      const parts = path.slice(1).split("/");
-      let dir = root;
-      for (const p of parts.slice(0, -1)) {
-        let n = dir.contents.get(p);
-        if (!n) {
-          n = new Directory(new Map());
-          dir.contents.set(p, n);
-        }
-        if (!(n instanceof Directory)) throw Error("invalid directory");
-        dir = n;
-      }
-      if (entry.kind === "dir")
-        dir.contents.set(parts.at(-1)!, new Directory(new Map()));
-      else {
-        const bytes = Uint8Array.from(entry.data || []);
-        dir.contents.set(
-          parts.at(-1)!,
-          new File(bytes, {
-            readonly:
-              !path.startsWith("/home/visitor/") && !path.startsWith("/tmp/"),
-          }),
-        );
-        original.set(path, bytes);
-      }
+    let size = 0;
+    for (const [path, entry] of data.snapshot.entries) {
+      const bytes = Uint8Array.from(entry.data || []);
+      nodes.push({
+        path,
+        kind: entry.kind,
+        mtime: entry.mtime,
+        offset: size,
+        len: bytes.length,
+      });
+      if (entry.kind === "file") original.set(path, bytes);
+      size += bytes.length;
     }
-    let working = root;
-    for (const p of data.cwd.slice(1).split("/")) {
-      const n = working.contents.get(p);
-      if (!(n instanceof Directory)) throw Error("cwd does not exist");
-      working = n;
-    }
-    const stdoutDecoder = new TextDecoder(),
-      stderrDecoder = new TextDecoder();
-    let stdout = "",
-      stderr = "",
-      outputBytes = 0;
-    const output = (channel: "stdout" | "stderr", chunk: Uint8Array) => {
-      outputBytes += chunk.length;
-      if (outputBytes > 1024 * 1024) throw Error("guest output exceeds 1 MiB");
-      const text = (
-        channel === "stdout" ? stdoutDecoder : stderrDecoder
-      ).decode(chunk, { stream: true });
-      if (channel === "stdout") stdout += text;
-      else stderr += text;
-      self.postMessage({ type: "output", channel, text });
-    };
-    const wasi = new WASI(data.args, data.env, [
-      new OpenFile(
-        new File(new TextEncoder().encode(data.stdin), { readonly: true }),
-      ),
-      new ConsoleStdout((c) => output("stdout", c)),
-      new ConsoleStdout((c) => output("stderr", c)),
-      new PreopenDirectory("/", root.contents),
-      new PreopenDirectory(data.cwd, working.contents),
-    ]);
+    if (size > 32 * 1024 * 1024) throw Error("snapshot exceeds 32 MiB");
+    const blob = new Uint8Array(size);
+    for (const node of nodes)
+      if (node.kind === "file") blob.set(original.get(node.path)!, node.offset);
+    core.call("fs.restore", { nodes }, blob);
+    core.call(
+      "guest.init",
+      { pid: data.pid, cwd: data.cwd, argv: data.args, env: data.env },
+      encode.encode(data.stdin),
+    );
     let instance: WebAssembly.Instance;
     let traceCount = 0,
       suppressed = 0,
       observedMemory = 0;
-    const host: Record<string, (...args: unknown[]) => unknown> = {};
-    const inodePaths = new WeakMap<Inode, string>();
-    const indexPaths = (dir: Directory, base: string) => {
-      inodePaths.set(dir, base || "/");
-      for (const [name, n] of dir.contents) {
-        const p = base + "/" + name;
-        inodePaths.set(n, p);
-        if (n instanceof Directory) indexPaths(n, p);
+    const memory = () => instance.exports.memory as WebAssembly.Memory;
+    const bytes = (ptr: number, length: number) => {
+      if (
+        !Number.isInteger(ptr) ||
+        !Number.isInteger(length) ||
+        ptr < 0 ||
+        length < 0 ||
+        ptr + length > memory().buffer.byteLength
+      )
+        throw new RangeError("invalid guest memory range");
+      return new Uint8Array(memory().buffer, ptr, length);
+    };
+    const u32 = (ptr: number, value: number) =>
+      new DataView(bytes(ptr, 4).buffer, ptr, 4).setUint32(0, value, true);
+    const string = (ptr: number, len: number) => decode.decode(bytes(ptr, len));
+    const vectors = (ptr: number, count: number) => {
+      if (count > 1024) throw new RangeError("too many I/O vectors");
+      const view = new DataView(bytes(ptr, count * 8).buffer, ptr, count * 8);
+      const list: Uint8Array[] = [];
+      let total = 0;
+      for (let i = 0; i < count; i++) {
+        const part = bytes(
+          view.getUint32(i * 8, true),
+          view.getUint32(i * 8 + 4, true),
+        );
+        total += part.length;
+        if (total > 8 * 1024 * 1024)
+          throw new RangeError("I/O buffer exceeds limit");
+        list.push(part);
       }
+      return { list, total };
     };
-    const descriptors = () => {
-      indexPaths(root, "");
-      return wasi.fds
-        .map((fd, index) =>
-          fd
-            ? {
-                fd: index,
-                type: fd.constructor.name,
-                path:
-                  fd instanceof PreopenDirectory
-                    ? fd.prestat_name
-                    : fd instanceof OpenFile
-                      ? inodePaths.get(fd.file)
-                      : fd instanceof OpenDirectory
-                        ? inodePaths.get(fd.dir)
-                        : undefined,
-                offset: fd instanceof OpenFile ? Number(fd.file_pos) : 0,
+    const host: Record<string, (...args: any[]) => number> = {};
+    const supported = [
+      "args_get",
+      "args_sizes_get",
+      "environ_get",
+      "environ_sizes_get",
+      "clock_res_get",
+      "clock_time_get",
+      "fd_advise",
+      "fd_allocate",
+      "fd_close",
+      "fd_datasync",
+      "fd_fdstat_get",
+      "fd_fdstat_set_flags",
+      "fd_fdstat_set_rights",
+      "fd_filestat_get",
+      "fd_filestat_set_size",
+      "fd_filestat_set_times",
+      "fd_pread",
+      "fd_prestat_get",
+      "fd_prestat_dir_name",
+      "fd_pwrite",
+      "fd_read",
+      "fd_readdir",
+      "fd_renumber",
+      "fd_seek",
+      "fd_sync",
+      "fd_tell",
+      "fd_write",
+      "path_create_directory",
+      "path_filestat_get",
+      "path_filestat_set_times",
+      "path_link",
+      "path_open",
+      "path_readlink",
+      "path_remove_directory",
+      "path_rename",
+      "path_symlink",
+      "path_unlink_file",
+      "poll_oneoff",
+      "proc_exit",
+      "proc_raise",
+      "random_get",
+      "sched_yield",
+      "sock_accept",
+      "sock_recv",
+      "sock_send",
+      "sock_shutdown",
+    ];
+    for (const name of supported)
+      host[name] = (...args: any[]) => {
+        const started = performance.now();
+        if (memory().buffer.byteLength !== observedMemory) {
+          observedMemory = memory().buffer.byteLength;
+          core.call("task.memory", { pid: data.pid, bytes: observedMemory });
+        }
+        const req: Record<string, unknown> = {
+          traceArgs: args.map(String).join(", "),
+        };
+        let input = new Uint8Array(),
+          outputPtr: number | undefined,
+          outputMax: number | undefined;
+        let io: ReturnType<typeof vectors> | undefined;
+        let result: {
+          value: {
+            errno: number;
+            fields: { offsets?: number[]; count?: number; exitCode?: number };
+          };
+          data: Uint8Array;
+        };
+        try {
+          if (name.startsWith("fd_")) req.fd = args[0];
+          if (name === "args_sizes_get" || name === "environ_sizes_get") {
+            bytes(args[0], 4);
+            bytes(args[1], 4);
+          } else if (name === "args_get" || name === "environ_get") {
+            outputPtr = args[1];
+          } else if (
+            ["fd_read", "fd_write", "fd_pread", "fd_pwrite"].includes(name)
+          ) {
+            io = vectors(args[1], args[2]);
+            req.count = io.total;
+            bytes(args[name === "fd_pread" || name === "fd_pwrite" ? 4 : 3], 4);
+            if (name === "fd_pread" || name === "fd_pwrite")
+              req.offset = String(args[3]);
+            if (name === "fd_write" || name === "fd_pwrite") {
+              input = new Uint8Array(io.total);
+              let offset = 0;
+              for (const part of io.list) {
+                input.set(part, offset);
+                offset += part.length;
               }
-            : null,
-        )
-        .filter(Boolean);
-    };
-    for (const [name, fn] of Object.entries(wasi.wasiImport))
-      host[name] = (...args) => {
-        const before = performance.now();
-        // Deny filesystem mutations outside the two writeable virtual areas.
-        if (name === "path_open" || name.startsWith("path_")) {
-          const memory = instance?.exports.memory as
-            WebAssembly.Memory | undefined;
-          let path = "";
-          if (
-            memory &&
+            }
+          } else if (
+            ["fd_prestat_get", "fd_fdstat_get", "fd_filestat_get"].includes(
+              name,
+            )
+          ) {
+            outputPtr = args[1];
+            outputMax =
+              name === "fd_prestat_get"
+                ? 8
+                : name === "fd_fdstat_get"
+                  ? 24
+                  : 64;
+          } else if (name === "fd_prestat_dir_name") {
+            outputPtr = args[1];
+            outputMax = args[2];
+          } else if (name === "fd_seek") {
+            req.offset = String(args[1]);
+            req.whence = args[2];
+            outputPtr = args[3];
+            outputMax = 8;
+          } else if (name === "fd_tell") {
+            outputPtr = args[1];
+            outputMax = 8;
+          } else if (name === "fd_fdstat_set_flags") req.flags = args[1];
+          else if (name === "fd_filestat_set_size") req.size = String(args[1]);
+          else if (name === "fd_allocate") {
+            req.offset = String(args[1]);
+            req.len = String(args[2]);
+          } else if (name === "fd_readdir") {
+            req.count = args[2];
+            req.cookie = String(args[3]);
+            outputPtr = args[1];
+            outputMax = args[2];
+            bytes(args[4], 4);
+          } else if (name === "path_open") {
+            req.dirfd = args[0];
+            req.path = string(args[2], args[3]);
+            req.oflags = args[4];
+            req.rights = String(args[5]);
+            req.fdflags = args[7];
+            outputPtr = args[8];
+            outputMax = 4;
+          } else if (name === "path_filestat_get") {
+            req.dirfd = args[0];
+            req.path = string(args[2], args[3]);
+            outputPtr = args[4];
+            outputMax = 64;
+          } else if (
             [
-              "path_open",
               "path_create_directory",
               "path_unlink_file",
               "path_remove_directory",
-              "path_filestat_set_times",
             ].includes(name)
           ) {
-            const pointer =
-              name === "path_open" || name === "path_filestat_set_times"
-                ? 2
-                : 1;
-            path = new TextDecoder().decode(
-              new Uint8Array(
-                memory.buffer,
-                Number(args[pointer]),
-                Number(args[pointer + 1]),
-              ),
-            );
-            indexPaths(root, "");
-            const directory = wasi.fds[Number(args[0])];
-            const base =
-              directory instanceof PreopenDirectory
-                ? directory.prestat_name
-                : directory instanceof OpenDirectory
-                  ? inodePaths.get(directory.dir) || "/"
-                  : "/";
-            const absolute = path.startsWith("/") ? path : base + "/" + path;
-            const normalized = absolute
-              .split("/")
-              .reduce<string[]>((parts, p) => {
-                if (p === "..") parts.pop();
-                else if (p && p !== ".") parts.push(p);
-                return parts;
-              }, [])
-              .join("/");
-            const writable =
-              normalized.startsWith("home/visitor/") ||
-              normalized.startsWith("tmp/");
-            const mutates =
-              name !== "path_open" ||
-              (Number(args[4]) & 9) !== 0 ||
-              (BigInt(args[5] as bigint) & 64n) !== 0n;
-            if (mutates && !writable) return 63; // ERRNO_PERM
+            req.dirfd = args[0];
+            req.path = string(args[1], args[2]);
+          } else if (name === "clock_time_get" || name === "clock_res_get") {
+            req.clock = args[0];
+            outputPtr = args[name === "clock_time_get" ? 2 : 1];
+            outputMax = 8;
+          } else if (name === "random_get") {
+            req.len = args[1];
+            outputPtr = args[0];
+            outputMax = args[1];
+          } else if (name === "proc_exit") req.code = args[0];
+          if (outputPtr !== undefined && outputMax !== undefined)
+            bytes(outputPtr, outputMax);
+          result = core.call("wasi." + name, req, input);
+          if (!result.value.errno) {
+            if (name === "args_sizes_get" || name === "environ_sizes_get") {
+              const view = new DataView(
+                result.data.buffer,
+                result.data.byteOffset,
+                8,
+              );
+              u32(args[0], view.getUint32(0, true));
+              u32(args[1], view.getUint32(4, true));
+            } else if (name === "args_get" || name === "environ_get") {
+              bytes(args[0], result.value.fields.offsets!.length * 4);
+              bytes(args[1], result.data.length).set(result.data);
+              result.value.fields.offsets!.forEach((offset, i) =>
+                u32(args[0] + i * 4, args[1] + offset),
+              );
+            } else if (io) {
+              if (name === "fd_read" || name === "fd_pread") {
+                let offset = 0;
+                for (const part of io.list) {
+                  const n = Math.min(part.length, result.data.length - offset);
+                  if (n > 0) part.set(result.data.subarray(offset, offset + n));
+                  offset += n;
+                }
+              }
+              u32(
+                args[name === "fd_pread" || name === "fd_pwrite" ? 4 : 3],
+                result.value.fields.count!,
+              );
+              if ((name === "fd_write" || name === "fd_pwrite") && args[0] < 3)
+                self.postMessage({
+                  type: "output",
+                  channel: args[0] === 1 ? "stdout" : "stderr",
+                  text: decode.decode(input),
+                });
+            } else if (outputPtr !== undefined) {
+              if (outputMax !== undefined && result.data.length > outputMax)
+                return 37;
+              bytes(outputPtr, result.data.length).set(result.data);
+              if (name === "fd_readdir") u32(args[4], result.data.length);
+            }
           }
-          if (["path_rename", "path_link", "path_symlink"].includes(name))
-            return 58; // not supported in guest adapter
+        } catch (error) {
+          if (!(error instanceof RangeError)) throw error;
+          result = { value: { errno: 21, fields: {} }, data: new Uint8Array() };
+          core.call("trace.add", {
+            pid: data.pid,
+            layer: "WASI",
+            name,
+            args: req.traceArgs,
+            result: "21",
+            duration: performance.now() - started,
+          });
         }
-        const fd = wasi.fds[Number(args[0])];
-        if (
-          fd instanceof OpenFile &&
-          [
-            "fd_allocate",
-            "fd_filestat_set_size",
-            "fd_write",
-            "fd_pwrite",
-          ].includes(name)
-        ) {
-          if (fd.file.readonly) return 63;
-          let nextSize = fd.file.data.length;
-          if (name === "fd_allocate")
-            nextSize = Math.max(nextSize, Number(args[1]) + Number(args[2]));
-          if (name === "fd_filestat_set_size") nextSize = Number(args[1]);
-          if (name === "fd_write" || name === "fd_pwrite") {
-            const mem = instance.exports.memory as WebAssembly.Memory,
-              view = new DataView(mem.buffer);
-            let length = 0;
-            for (let i = 0; i < Number(args[2]); i++)
-              length += view.getUint32(Number(args[1]) + i * 8 + 4, true);
-            nextSize = Math.max(
-              nextSize,
-              (name === "fd_pwrite" ? Number(args[3]) : Number(fd.file_pos)) +
-                length,
-            );
-          }
-          let total = 0;
-          const count = (dir: Directory) => {
-            for (const n of dir.contents.values())
-              if (n instanceof File) total += n.data.length;
-              else if (n instanceof Directory) count(n);
-          };
-          count(root);
-          if (
-            !Number.isFinite(nextSize) ||
-            nextSize > 8 * 1024 * 1024 ||
-            total - fd.file.data.length + nextSize > 32 * 1024 * 1024
-          )
-            return 27;
-        }
-        const result = fn(...args);
-        const memory = instance?.exports.memory as
-          WebAssembly.Memory | undefined;
-        if (memory)
-          observedMemory = Math.max(observedMemory, memory.buffer.byteLength);
-        if (name === "fd_write") {
-          const fd = wasi.fds[Number(args[0])];
-          if (fd instanceof OpenFile && fd.file.data.length > 8 * 1024 * 1024)
-            throw Error("guest file exceeds 8 MiB");
-        }
+        observedMemory = Math.max(observedMemory, memory().buffer.byteLength);
         if (traceCount++ < 300)
           self.postMessage({
             type: "trace",
             op: name,
-            args: args.map(String).join(", "),
-            result: String(result),
-            duration: performance.now() - before,
-            memoryBytes: memory?.buffer.byteLength || 0,
-            descriptors: descriptors(),
+            args: req.traceArgs,
+            result: String(result.value.errno),
+            duration: performance.now() - started,
+            memoryBytes: memory().buffer.byteLength,
+            descriptors: core.call("fd.list").value,
           });
         else suppressed++;
-        return result;
+        if (name === "proc_exit" && !result.value.errno)
+          throw new ProcessExit(result.value.fields.exitCode!);
+        return result.value.errno;
       };
     const started = performance.now();
     const module = await WebAssembly.compile(
@@ -247,57 +330,67 @@ self.onmessage = async ({ data }: { data: GuestInput }) => {
     );
     if (
       WebAssembly.Module.imports(module).some(
-        (i) => i.module !== "wasi_snapshot_preview1" || !(i.name in host),
+        (i) =>
+          i.module !== "wasi_snapshot_preview1" ||
+          i.kind !== "function" ||
+          !(i.name in host),
       )
     )
       throw Error("unsupported guest import");
     instance = await WebAssembly.instantiate(module, {
       wasi_snapshot_preview1: host,
     });
-    const memory = instance.exports.memory as WebAssembly.Memory;
+    if (
+      !(memory() instanceof WebAssembly.Memory) ||
+      typeof instance.exports._start !== "function"
+    )
+      throw Error("guest requires exported memory and _start");
+    observedMemory = memory().buffer.byteLength;
+    core.call("task.memory", { pid: data.pid, bytes: observedMemory });
     self.postMessage({
       type: "memory",
-      bytes: memory.buffer.byteLength,
-      preview: new Uint8Array(memory.buffer.slice(0, 4096)),
+      bytes: memory().buffer.byteLength,
+      preview: new Uint8Array(memory().buffer.slice(0, 4096)),
     });
-    const exitCode = wasi.start(
-      instance as unknown as Parameters<WASI["start"]>[0],
-    );
-    const writes: { path: string; data: Uint8Array }[] = [],
-      dirs: string[] = [];
-    const existing = new Set<string>();
-    const walk = (dir: Directory, base: string) => {
-      for (const [name, n] of dir.contents) {
-        const path = base + "/" + name;
-        existing.add(path);
-        if (n instanceof Directory) {
-          dirs.push(path);
-          walk(n, path);
-        } else if (n instanceof File) {
-          const old = original.get(path);
-          if (
-            !old ||
-            old.length !== n.data.length ||
-            old.some((b, i) => b !== n.data[i])
-          )
-            writes.push({ path, data: n.data });
-        }
+    let exitCode = 0;
+    try {
+      (instance.exports._start as () => void)();
+    } catch (error) {
+      if (error instanceof ProcessExit) exitCode = error.code;
+      else throw error;
+    }
+    core.call("task.finish", { pid: data.pid, code: exitCode });
+    const snapshot = core.call<SnapshotNode[]>("fs.snapshot");
+    const existing = new Set(snapshot.value.map((n) => n.path));
+    const dirs: string[] = [],
+      writes: { path: string; data: Uint8Array }[] = [];
+    for (const node of snapshot.value) {
+      if (node.kind === "dir") dirs.push(node.path);
+      else {
+        const bytes = snapshot.data.slice(node.offset, node.offset + node.len),
+          old = original.get(node.path);
+        if (
+          !old ||
+          old.length !== bytes.length ||
+          old.some((b, i) => b !== bytes[i])
+        )
+          writes.push({ path: node.path, data: bytes });
       }
-    };
-    walk(root, "");
+    }
     self.postMessage({
       type: "done",
       exitCode,
-      stdout,
-      stderr,
+      stdout: decode.decode(core.call("fs.peek", { path: "/dev/stdout" }).data),
+      stderr: decode.decode(core.call("fs.peek", { path: "/dev/stderr" }).data),
       writes,
       dirs,
       removed: data.snapshot.entries
         .map(([p]) => p)
         .filter((p) => p !== "/" && !existing.has(p)),
       duration: performance.now() - started,
-      memoryBytes: Math.max(observedMemory, memory.buffer.byteLength),
-      preview: new Uint8Array(memory.buffer.slice(0, 4096)),
+      memoryBytes: Math.max(observedMemory, memory().buffer.byteLength),
+      kernelMemoryBytes: core.exports.memory.buffer.byteLength,
+      preview: new Uint8Array(memory().buffer.slice(0, 4096)),
       suppressed,
     });
   } catch (e) {

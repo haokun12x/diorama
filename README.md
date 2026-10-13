@@ -4,7 +4,7 @@
 
 A miniature computing world, built from first principles. [Open the machine](https://haokun12x.github.io/diorama/) · [Architecture](docs/ARCHITECTURE.md) · [Limitations](docs/LIMITATIONS.md)
 
-DIORAMA is an executable engineering homepage. Its terminal queries and modifies a shared filesystem, its process inspector follows actual runtime tasks, its compiler runs genuine Clang/LLD as WebAssembly, and its vision lab evaluates YOLO26 locally. It is a TypeScript virtual kernel with a restricted WASI environment—not a Linux distribution.
+DIORAMA is an executable engineering homepage. Its terminal queries and modifies a shared filesystem, its process inspector follows actual runtime tasks, its compiler runs genuine Clang/LLD as WebAssembly, and its vision lab evaluates YOLO26 locally. The custom kernel and WASI system services execute as Rust/WebAssembly. The browser supplies the UI, shell, clocks, cryptographic entropy, storage transport, and worker control.
 
 ![DIORAMA live browser computer](docs/screenshots/desktop.jpg)
 
@@ -28,14 +28,17 @@ C source stays in the browser. Guest programs execute in disposable workers with
 
 ## Run and verify
 
-Requires Node.js 22. The lockfile fixes the dependency graph.
+Requires Node.js 22 and Rust 1.90.0 with the wasm32-unknown-unknown target. npm and Cargo lockfiles fix both dependency graphs.
 
 ```sh
+rustup toolchain install 1.90.0 --profile minimal --target wasm32-unknown-unknown
 npm ci
+npm run kernel     # compile authoritative kernel and WASI services to WASM
 npm run assets     # self-host pinned compiler, model, and ONNX runtime artifacts
 npm run dev
 npm run typecheck
 npm test
+npm run test:rust
 npm run build
 npx playwright install --with-deps chromium
 npm run test:e2e
@@ -48,7 +51,9 @@ Open the /diorama/ subpath printed by Vite. The asset preparation step downloads
 
 | Component | Execution |
 |---|---|
-| Virtual kernel, shell, VFS, persistence, UI | TypeScript/JavaScript in the browser |
+| Kernel, VFS, tasks, descriptors, tracing, snapshots | Rust compiled to WebAssembly; authoritative state in WASM linear memory |
+| Guest WASI preview1 system services | Separate instance of that Rust/WASM kernel in each guest worker |
+| Shell, UI, IndexedDB transport, worker control | TypeScript/JavaScript in the browser |
 | Clang 20.1.2 and LLD | Emscripten WebAssembly in a compiler worker |
 | User-compiled C | WASI preview1 WebAssembly in a disposable guest worker |
 | YOLO26 preprocessing/postprocessing | Official Ultralytics Rust compiled to WASM |
@@ -71,7 +76,7 @@ Verified portfolio projects are represented both in the project explorer and /ho
 
 ## GitHub Pages
 
-Vite's production base is /diorama/. The workflow in .github/workflows/deploy.yml uses npm ci, prepares assets, typechecks, tests, builds, and runs real browser compiler/inference tests before uploading and deploying the Pages artifact with official GitHub actions. Set **Settings → Pages → Source → GitHub Actions** for the repository. Pushes to main and manual workflow dispatch publish the site. Pages does not need COOP/COEP or SharedArrayBuffer: acceptance tests explicitly exercise a non-isolated context and CPU inference.
+Vite's production base is /diorama/. The workflow in .github/workflows/deploy.yml installs pinned Rust, compiles the WASM kernel, uses npm ci, prepares assets, typechecks, tests Rust and the actual WASM ABI, builds, and runs real browser compiler/inference tests before uploading and deploying the Pages artifact with official GitHub actions. Set **Settings → Pages → Source → GitHub Actions** for the repository. Pushes to main and manual workflow dispatch publish the site. Pages does not need COOP/COEP or SharedArrayBuffer: acceptance tests explicitly exercise a non-isolated context and CPU inference.
 
 ## License
 

@@ -350,7 +350,7 @@ export class Shell {
         );
       case "uname":
         return ok(
-          "DIORAMA 0.1 / virtual TypeScript kernel / wasm32 WASI preview1 / " +
+          "DIORAMA 0.1 / Rust/WebAssembly kernel / wasm32 WASI preview1 / " +
             navigator.userAgent +
             "\n",
         );

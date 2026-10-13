@@ -15,7 +15,17 @@ const layers = [
 export default function KernelView() {
   useMachine();
   const [filter, setFilter] = useState("all"),
-    [selected, setSelected] = useState(1);
+    [selected, setSelected] = useState(1),
+    [memorySource, setMemorySource] = useState("kernel");
+  const coreInfo = kernel.core.info();
+  const previewOffset =
+    memorySource === "kernel"
+      ? Number(kernel.core.exports.__heap_base.value)
+      : 0;
+  const preview =
+    memorySource === "kernel"
+      ? new Uint8Array(kernel.core.exports.memory.buffer, previewOffset, 4096)
+      : compiler.memoryPreview;
   const tasks = kernel.taskInfo(),
     events = kernel.events.filter(
       (e) => filter === "all" || e.layer === filter,
@@ -25,6 +35,10 @@ export default function KernelView() {
     <div className="kernel-view">
       <div className="kernel-stats">
         {[
+          [
+            "RUST / WASM KERNEL",
+            (coreInfo.linearMemoryBytes / 1024).toFixed(0) + " KiB",
+          ],
           ["TASKS", tasks.filter((t) => !t.ended).length + " active"],
           [
             "VIRTUAL FILESYSTEM",
@@ -138,20 +152,30 @@ export default function KernelView() {
         </section>
         <section className="memory-pane">
           <div className="pane-title">
-            WASM linear memory <span className="micro">OBSERVED BYTES</span>
+            WASM linear memory
+            <label>
+              Instance{" "}
+              <select
+                value={memorySource}
+                onChange={(e) => setMemorySource(e.target.value)}
+              >
+                <option value="kernel">Rust kernel</option>
+                <option value="guest">Last C guest</option>
+              </select>
+            </label>
           </div>
           <div className="memory-grid">
             {Array.from({ length: 128 }, (_, i) => {
               const value =
-                compiler.memoryPreview
+                preview
                   .slice(i * 32, i * 32 + 32)
                   .reduce((sum, n) => sum + n, 0) / 32;
               return (
                 <span
                   key={i}
-                  title={`0x${(i * 32).toString(16).padStart(4, "0")} · mean byte ${value.toFixed(1)}`}
+                  title={`0x${(previewOffset + i * 32).toString(16).padStart(4, "0")} · mean byte ${value.toFixed(1)}`}
                   style={{
-                    background: compiler.memoryPreview.length
+                    background: preview.length
                       ? `rgba(113,130,95,${0.1 + (value / 255) * 0.9})`
                       : "#e4e3d9",
                   }}
@@ -160,9 +184,14 @@ export default function KernelView() {
             })}
           </div>
           <p className="fine">
-            First 4 KiB of the most recent guest's actual linear memory. Each
-            cell averages 32 bytes. No guest has run until values appear. This
-            is a byte preview, not an allocation map.
+            4 KiB at 0x{previewOffset.toString(16)} of{" "}
+            {memorySource === "kernel"
+              ? "the live Rust kernel's"
+              : "the most recent C guest's"}{" "}
+            actual linear memory. Each cell averages 32 bytes. This is a byte
+            preview, not an allocation map.
+            {memorySource === "kernel" &&
+              ` ABI ${coreInfo.abi} · ${coreInfo.calls.toLocaleString()} native calls.`}
           </p>
           <details open>
             <summary>Open file descriptors · {kernel.fds.length}</summary>

@@ -28,9 +28,9 @@ const anatomy = [
     id: "Compiler" as Tab,
   },
   {
-    name: "Virtual kernel",
+    name: "Rust / WASM kernel",
     detail:
-      "Task lifecycle, cooperative dispatch, descriptors, and a mutable filesystem.",
+      "A Rust kernel owns tasks, descriptors, files, and system calls in WebAssembly.",
     id: "Kernel" as Tab,
   },
   {
@@ -268,7 +268,7 @@ export function App() {
               Inside Your <em>Browser.</em>
             </h1>
             <p className="hero-description">
-              A miniature computing environment. A virtual kernel, a real
+              A miniature computing environment. A Rust/WASM kernel, a real
               compiler, and neural perception — running at the edge of the web.
             </p>
             <div className="hero-actions">

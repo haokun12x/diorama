@@ -14,3 +14,6 @@ __pycache__/
 *.safetensors
 public/yolo/
 public/examples/
+crates/kernel/target/
+src/kernel/native/*.wasm
+public/kernel-manifest.json

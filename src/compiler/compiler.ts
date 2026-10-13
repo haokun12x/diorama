@@ -1,4 +1,5 @@
 import type { Kernel, Task } from "../kernel/kernel";
+import { kernelModule } from "../kernel/native";
 import { FileSystem } from "../fs/filesystem";
 import { inspectWasm, validateMemory, type WasmInfo } from "./wasm";
 export class Compiler {
@@ -154,6 +155,8 @@ export class Compiler {
           }),
           {
             binary,
+            kernelModule,
+            pid: task.pid,
             args: [path, ...args],
             env: Object.entries(env).map(([k, v]) => k + "=" + v),
             stdin,
@@ -173,7 +176,7 @@ export class Compiler {
                 data.result,
                 data.duration,
               );
-              task.memoryBytes = data.memoryBytes;
+              this.kernel.memory(task, data.memoryBytes);
               this.kernel.fds = this.kernel.fds
                 .filter((f) => f.pid !== task.pid)
                 .concat(
@@ -181,6 +184,7 @@ export class Compiler {
                     (d: {
                       fd: number;
                       type: string;
+                      mode: string;
                       path?: string;
                       offset: number;
                     }) => ({
@@ -190,7 +194,7 @@ export class Compiler {
                         d.fd < 3
                           ? "/dev/std" + ["in", "out", "err"][d.fd]
                           : d.path || d.type,
-                      mode: "rw",
+                      mode: d.mode,
                       offset: d.offset,
                     }),
                   ),
@@ -199,7 +203,7 @@ export class Compiler {
             if (data.type === "memory") {
               this.memoryPreview = data.preview;
               this.memoryBytes = data.bytes;
-              task.memoryBytes = data.bytes;
+              this.kernel.memory(task, data.bytes);
               this.kernel.trace(
                 task.pid,
                 "WASM",
@@ -232,7 +236,7 @@ export class Compiler {
         this.lastRunMs = result.duration;
         this.memoryBytes = result.memoryBytes;
         this.memoryPreview = result.preview;
-        task.memoryBytes = result.memoryBytes;
+        this.kernel.memory(task, result.memoryBytes);
         if (result.suppressed)
           this.kernel.trace(
             task.pid,
