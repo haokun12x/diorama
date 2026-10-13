@@ -979,6 +979,9 @@ details[open] > summary {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
 }
+.kernel-columns > section {
+  min-width: 0;
+}
 .kernel-columns > section:first-child {
   border-right: 1px solid #d4dbc9;
 }

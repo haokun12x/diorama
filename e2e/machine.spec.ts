@@ -100,6 +100,22 @@ test("production navigation, terminal, persistence, and narrow layout", async ({
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
     ),
   ).toBe(true);
+  for (const tab of [
+    "Terminal",
+    "Kernel",
+    "Compiler",
+    "Vision Lab",
+    "Projects",
+  ]) {
+    await page.getByRole("tab", { name: tab, exact: true }).click();
+    await expect(page.locator(".view-loading:visible")).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      tab + " fits the mobile viewport",
+    ).toBe(true);
+  }
 });
 test("genuine local Clang compilation, WASI I/O, diagnostics, exits, and interruption", async ({
   page,
