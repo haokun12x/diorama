@@ -1,3 +1,4 @@
+import type { AdapterInfo } from "../observability/telemetry";
 import type { Results } from "@ultralytics/yolo";
 import type { Kernel, Task } from "../kernel/kernel";
 export class Vision {
@@ -88,9 +89,14 @@ export class Vision {
     this.worker = undefined;
     this.modelName = "";
     this.status = "Initializing " + name;
+    this.kernel.trace(task.pid, "vision", "model.initialize", name, "loading");
     this.progress.clear();
     this.kernel.notify();
-    const result = await this.rpc<{ device: string; task: string }>(
+    const result = await this.rpc<{
+      device: string;
+      task: string;
+      adapter?: AdapterInfo;
+    }>(
       {
         action: "load",
         model: name,
@@ -100,6 +106,7 @@ export class Vision {
       task,
       180000,
     );
+    this.kernel.telemetry.adapter = result.adapter;
     this.modelName = name;
     this.device = result.device;
     this.status = "Ready · " + name;
@@ -125,6 +132,13 @@ export class Vision {
           this.kernel.state(task, "waiting");
           await this.load(segment, task);
           this.status = "Running inference";
+          this.kernel.trace(
+            task.pid,
+            "vision",
+            "predict.begin",
+            this.modelName,
+            this.device,
+          );
           this.kernel.state(task, "running");
           const result = await this.rpc<{ results: Results; duration: number }>(
             { action: "predict", image, conf: this.confidence, classes },
@@ -149,6 +163,16 @@ export class Vision {
           this.last = r;
           this.lastDuration = result.duration;
           this.frames++;
+          this.kernel.telemetry.recordInference({
+            pid: task.pid,
+            model: this.modelName,
+            backend: this.device,
+            preprocess: r.speed.preprocess,
+            inference: r.speed.inference,
+            postprocess: r.speed.postprocess,
+            pipeline: result.duration,
+            objects: r.boxes.length,
+          });
           this.status = `Ready · ${r.boxes.length} objects`;
           if (persist) await this.persist(r, segment, task.pid);
           this.kernel.trace(

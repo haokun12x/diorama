@@ -98,3 +98,4 @@ declare global {
   }
 }
 window.diorama = { kernel, compiler, vision, shell, ready };
+kernel.telemetry.start();

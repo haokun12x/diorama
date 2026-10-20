@@ -77,9 +77,31 @@ self.onmessage = async ({ data }) => {
       } finally {
         globalThis.fetch = originalFetch;
       }
+      let adapter;
+      if (model.device === "webgpu") {
+        try {
+          const device = await scope.ort?.env?.webgpu?.device;
+          const info =
+            device?.adapterInfo || scope.ort?.env?.webgpu?.adapter?.info;
+          if (info)
+            adapter = {
+              vendor: info.vendor || "",
+              architecture: info.architecture || "",
+              description: info.description || "",
+              fallback:
+                typeof info.isFallbackAdapter === "boolean"
+                  ? info.isFallbackAdapter
+                  : null,
+              timestampQuery: !!device?.features?.has("timestamp-query"),
+            };
+        } catch {
+          /* Optional metadata does not prevent actual inference. */
+        }
+      }
       self.postMessage({
         id: data.id,
         type: "done",
+        adapter,
         device: model.device,
         task: model.task,
       });

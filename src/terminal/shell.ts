@@ -72,6 +72,7 @@ export class Shell {
     this.busy = true;
     this.history.push(line);
     if (this.history.length > 200) this.history.shift();
+    const observation = this.kernel.telemetry.beginCommand(line);
     let result = ok();
     try {
       const pipeline = parse(line, this.env);
@@ -82,6 +83,7 @@ export class Shell {
           "userspace",
           async (task) => {
             this.active = task;
+            this.kernel.telemetry.link(observation, task.pid);
             this.kernel.trace(
               task.pid,
               "shell",
@@ -90,7 +92,9 @@ export class Shell {
               "running",
             );
             if (command.input)
-              input = this.kernel.fs.text(this.path(command.input));
+              input = this.kernel.withPid(task.pid, () =>
+                this.kernel.fs.text(this.path(command.input!)),
+              );
             let output: CommandResult;
             try {
               output = await this.dispatch(command.args, input, task);
@@ -105,10 +109,12 @@ export class Shell {
               output = { stdout: "", stderr: "Interrupted\n", code: 130 };
             if (command.output) {
               if (this.path(command.output) !== "/dev/null")
-                this.kernel.fs.write(
-                  this.path(command.output),
-                  output.stdout,
-                  command.append,
+                this.kernel.withPid(task.pid, () =>
+                  this.kernel.fs.write(
+                    this.path(command.output!),
+                    output.stdout,
+                    command.append,
+                  ),
                 );
               this.kernel.trace(
                 task.pid,
@@ -121,10 +127,12 @@ export class Shell {
             }
             if (command.error) {
               if (this.path(command.error) !== "/dev/null")
-                this.kernel.fs.write(
-                  this.path(command.error),
-                  output.stderr,
-                  command.errorAppend,
+                this.kernel.withPid(task.pid, () =>
+                  this.kernel.fs.write(
+                    this.path(command.error!),
+                    output.stderr,
+                    command.errorAppend,
+                  ),
                 );
               output.stderr = "";
             }
@@ -154,6 +162,7 @@ export class Shell {
       this.env["?"] = String(result.code);
       this.active = undefined;
       this.busy = false;
+      this.kernel.telemetry.finishCommand(observation, result.code);
       this.kernel.notify();
     }
     return result;

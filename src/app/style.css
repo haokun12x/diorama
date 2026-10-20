@@ -430,7 +430,7 @@ h2 {
 }
 .terminal-layout {
   display: grid;
-  grid-template-columns: 1fr 258px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   min-width: 0;
 }
 .terminal-layout > div {

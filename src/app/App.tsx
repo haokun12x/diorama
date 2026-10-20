@@ -1,3 +1,4 @@
+import { ExecutionRail } from "../observability/Observatory";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { kernel, compiler, vision, shell, persistence } from "./machine";
 import { useMachine } from "../components/useMachine";
@@ -226,7 +227,6 @@ export function App() {
       200,
     );
   };
-  const active = kernel.taskInfo().filter((t) => !t.ended).length;
   return (
     <>
       <a className="skip-link" href="#machine">
@@ -404,56 +404,7 @@ export function App() {
                             </button>
                           </div>
                         </div>
-                        <aside className="runtime-rail">
-                          <p className="micro">MACHINE STATE</p>
-                          <h3>
-                            A window into
-                            <br />
-                            the runtime.
-                          </h3>
-                          <dl>
-                            <div>
-                              <dt>Active tasks</dt>
-                              <dd>{active.toString().padStart(2, "0")}</dd>
-                            </div>
-                            <div>
-                              <dt>Filesystem</dt>
-                              <dd>
-                                {(kernel.fs.bytes() / 1024).toFixed(1)}{" "}
-                                <small>KiB</small>
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Trace events</dt>
-                              <dd>{kernel.events.length}</dd>
-                            </div>
-                            <div>
-                              <dt>Compiler</dt>
-                              <dd className="status-text">
-                                {compiler.lastInfo ? "loaded" : "on demand"}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Perception</dt>
-                              <dd className="status-text">
-                                {vision.modelName || "on demand"}
-                              </dd>
-                            </div>
-                          </dl>
-                          <div className="runtime-mini-trace">
-                            <span className="micro">LATEST OPERATION</span>
-                            <code>{kernel.events.at(-1)?.op}</code>
-                            <small>
-                              {kernel.events.at(-1)?.result.slice(0, 70)}
-                            </small>
-                          </div>
-                          <button
-                            className="rail-link"
-                            onClick={() => open("Kernel", false)}
-                          >
-                            Open kernel inspector <span>→</span>
-                          </button>
-                        </aside>
+                        <ExecutionRail open={() => open("Kernel", false)} />
                       </div>
                     ) : t === "Kernel" ? (
                       <KernelView />

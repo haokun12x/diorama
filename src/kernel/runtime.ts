@@ -21,6 +21,7 @@ type Exports = {
 const encode = new TextEncoder(),
   decode = new TextDecoder();
 export class NativeKernel {
+  onCall?: (op: string, duration: number) => void;
   instance: WebAssembly.Instance;
   exports: Exports;
   onEvents: (events: TraceEvent[]) => void = () => {};
@@ -52,6 +53,7 @@ export class NativeKernel {
     args: Record<string, unknown> = {},
     blob: Uint8Array = new Uint8Array(),
   ): { value: T; data: Uint8Array; events: TraceEvent[] } {
+    const callStarted = performance.now();
     const request = encode.encode(JSON.stringify({ op, ...args }));
     const e = this.exports;
     const ptr = e.kernel_alloc(request.length),
@@ -81,6 +83,7 @@ export class NativeKernel {
     } finally {
       e.kernel_dealloc(ptr, request.length);
       e.kernel_dealloc(blobPtr, blob.length);
+      this.onCall?.(op, performance.now() - callStarted);
     }
   }
   info() {

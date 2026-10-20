@@ -73,7 +73,16 @@ export class Compiler {
                   loaded: data.loaded,
                   total: data.total,
                 });
-              if (data.type === "phase") this.status = data.phase;
+              if (data.type === "phase") {
+                this.status = data.phase;
+                this.kernel.trace(
+                  task.pid,
+                  "compiler",
+                  "compiler.phase",
+                  path,
+                  data.phase,
+                );
+              }
               this.kernel.notify();
             },
           );
@@ -168,6 +177,15 @@ export class Compiler {
           (data) => {
             if (data.type === "output") onOutput?.(data.text, data.channel);
             if (data.type === "trace") {
+              for (const e of data.nativeEvents || [])
+                this.kernel.trace(
+                  task.pid,
+                  e.layer,
+                  e.op,
+                  e.args,
+                  e.result,
+                  e.duration,
+                );
               this.kernel.trace(
                 task.pid,
                 "WASI",
@@ -177,6 +195,7 @@ export class Compiler {
                 data.duration,
               );
               this.kernel.memory(task, data.memoryBytes);
+              this.kernel.telemetry.guestBytes = data.memoryBytes;
               this.kernel.fds = this.kernel.fds
                 .filter((f) => f.pid !== task.pid)
                 .concat(
@@ -203,6 +222,7 @@ export class Compiler {
             if (data.type === "memory") {
               this.memoryPreview = data.preview;
               this.memoryBytes = data.bytes;
+              this.kernel.telemetry.guestBytes = data.bytes;
               this.kernel.memory(task, data.bytes);
               this.kernel.trace(
                 task.pid,
@@ -235,6 +255,7 @@ export class Compiler {
           this.kernel.trace(task.pid, "filesystem", op, args, result);
         this.lastRunMs = result.duration;
         this.memoryBytes = result.memoryBytes;
+        this.kernel.telemetry.guestBytes = result.memoryBytes;
         this.memoryPreview = result.preview;
         this.kernel.memory(task, result.memoryBytes);
         if (result.suppressed)

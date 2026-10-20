@@ -326,9 +326,16 @@ test("WebGPU backend runs genuine YOLO26 inference when an adapter is available"
     const proof = await page.evaluate(async () => {
       const v = window.diorama.vision;
       const r = await v.inferPath("/samples/street.jpg");
-      return { device: v.device, count: r.boxes.length, speed: r.speed };
+      return {
+        device: v.device,
+        count: r.boxes.length,
+        speed: r.speed,
+        telemetry: window.diorama.kernel.telemetry.inferences.at(-1),
+      };
     });
     expect(proof.device).toBe("webgpu");
+    expect(proof.telemetry?.backend).toBe("webgpu");
+    expect(proof.telemetry?.inference).toBe(proof.speed.inference);
     expect(proof.count).toBeGreaterThan(0);
     expect(proof.speed.inference).toBeGreaterThan(0);
     console.log("WEBGPU_PROOF", JSON.stringify({ info, ...proof }));

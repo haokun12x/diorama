@@ -47,6 +47,12 @@ npm run preview
 
 Open the /diorama/ subpath printed by Vite. The asset preparation step downloads genuine upstream models and runtime files; generated heavy artifacts are ignored by Git and included in the deployment build. It adds small documented worker adapters and preserves upstream notices. `CHROMIUM_PATH` can select an existing Chromium. `DIORAMA_URL` runs browser acceptance tests against a deployed URL.
 
+## Observe an execution
+
+Run `./sample-hello` in the terminal and open **Kernel**. The side panel follows real subsystem boundaries; the observatory shows nested tasks, measured lifetimes, event inspection, and replay. Run detection or camera capture in **Vision Lab** to populate model/backend-specific latency charts. Memory, ABI activity, and browser frame timing update at 4 Hz, with local JSON export.
+
+![Live execution observatory](docs/screenshots/execution-observatory.jpg)
+
 ## What executes where
 
 | Component | Execution |
@@ -63,6 +69,7 @@ The live task table records IDs, parents, lifecycle transitions, exit codes, can
 
 ## Implementation guides
 
+- [Execution observatory](docs/OBSERVABILITY.md): live command paths, PID timelines, replay, WASM/browser/inference metrics, and local JSON export.
 - [Architecture](docs/ARCHITECTURE.md): boundaries, state, workers, security, and observability.
 - [Kernel and shell](docs/KERNEL.md): actual semantics, commands, pipes, descriptors, snapshots.
 - [Compiler](docs/COMPILER.md): toolchain, headers, linking, imports, limits, examples.

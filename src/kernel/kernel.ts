@@ -1,4 +1,5 @@
 import { FileSystem } from "../fs/filesystem";
+import { Telemetry } from "../observability/telemetry";
 import { NativeKernel } from "./native";
 export type TaskState =
   "runnable" | "running" | "waiting" | "terminated" | "cancelled";
@@ -35,12 +36,18 @@ type TaskRecord = Omit<Task, "controller">;
 export class Kernel {
   core = new NativeKernel();
   fs = new FileSystem(this.core);
+  telemetry = new Telemetry(this);
   revision = 0;
   listeners = new Set<() => void>();
   private taskCache = new Map<number, Task>();
   private caller = 1;
   constructor() {
-    this.core.onEvents = () => this.notify();
+    this.core.onEvents = (events) => {
+      this.telemetry.ingest(events);
+      this.notify();
+    };
+    this.core.onCall = (op, duration) =>
+      this.telemetry.recordCall(op, duration);
     this.fs.onChange = () => this.notify();
   }
   get started() {

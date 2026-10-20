@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import type { TraceEvent } from "../kernel/kernel";
 import { NativeKernel } from "../kernel/runtime";
 import type { Snapshot } from "../fs/filesystem";
 import { validateMemory } from "../compiler/wasm";
@@ -158,6 +159,7 @@ self.onmessage = async ({ data }: { data: GuestInput }) => {
           outputMax: number | undefined;
         let io: ReturnType<typeof vectors> | undefined;
         let result: {
+          events?: TraceEvent[];
           value: {
             errno: number;
             fields: { offsets?: number[]; count?: number; exitCode?: number };
@@ -318,6 +320,9 @@ self.onmessage = async ({ data }: { data: GuestInput }) => {
             duration: performance.now() - started,
             memoryBytes: memory().buffer.byteLength,
             descriptors: core.call("fd.list").value,
+            nativeEvents: result.events?.filter(
+              (e) => e.layer === "filesystem",
+            ),
           });
         else suppressed++;
         if (name === "proc_exit" && !result.value.errno)
